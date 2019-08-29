@@ -129,7 +129,7 @@ def get_cfg():
     args = Namespace()
     args.tr_lst=options.tr_lst
     args.te_lst=options.te_lst
-    args.pt_file=options.pt_file
+    args.pt_file=options.pt_file if options.pt_file_reset=='' else options.pt_file_reset
     args.class_dict_file=options.lab_dict
     args.data_folder=options.data_folder+'/'
     args.output_folder=options.output_folder
