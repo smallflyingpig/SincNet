@@ -18,6 +18,7 @@ def read_conf():
  
  parser=OptionParser()
  parser.add_option("--cfg") # Mandatory
+ parser.add_option("--eval", action='store_true', default=False, help="eval the model")
  (options,args)=parser.parse_args()
  cfg_file=options.cfg
  Config = ConfigParser.ConfigParser()

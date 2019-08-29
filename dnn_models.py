@@ -461,5 +461,23 @@ class SincNet(nn.Module):
        return x
    
 
+class SpeakerIDNet(nn.Module):
+    def __init__(self, options_cnn, options_dnn, options_classifier):
+        super(SpeakerIDNet, self).__init__()
+        self.CNN_net = SincNet(options_cnn)
+        options_dnn['input_dim'] = self.CNN_net.out_dim
+        self.DNN1_net = MLP(options_dnn)
+        self.DNN2_net = MLP(options_classifier)
+
+    def forward(self, x):
+        pout=self.DNN2_net(self.DNN1_net(self.CNN_net(x)))
+        return pout
+
+    def load_raw_state_dict(self, state_dict, strict=True):
+        self.CNN_net.load_state_dict(state_dict['CNN_model_par'], strict=strict)
+        self.DNN1_net.load_state_dict(state_dict['DNN1_model_par'], strict=strict)
+        self.DNN2_net.load_state_dict(state_dict['DNN2_model_par'], strict=strict)
+
+
     
    
