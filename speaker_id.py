@@ -131,7 +131,7 @@ def get_cfg():
     args.te_lst=options.te_lst
     args.pt_file=options.pt_file if options.pt_file_reset=='' else options.pt_file_reset
     args.class_dict_file=options.lab_dict
-    args.data_folder=options.data_folder+'/'
+    args.data_folder=(options.data_folder if options.data_folder_reset=='' else options.data_folder_reset)+'/'
     args.output_folder=options.output_folder
     #[windowing]
     args.fs=int(options.fs)
