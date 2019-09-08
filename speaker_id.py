@@ -25,6 +25,7 @@ from dnn_models import MLP,flip, SpeakerIDNet
 from dnn_models import SincNet as CNN 
 from data_io import ReadList,read_conf,str_to_bool
 from argparse import Namespace
+import tqdm
 
 def create_batches_rnd(batch_size,data_folder,wav_lst,N_snt,wlen,lab_dict,fact_amp):
     
@@ -69,10 +70,9 @@ def evaluate(model:SpeakerIDNet, lab_dict, wlen, wshift, Batch_dev, cost):
     loss_sum=0
     err_sum=0
     err_sum_snt=0
-    
+    # model.CNN_net.conv[0].filter_type='both'
     with torch.no_grad():  
-        for i in range(args.snt_te):
-        
+        for i in range(tqdm.tqdm(args.snt_te)):
             [signal, fs] = sf.read(args.data_folder+args.wav_lst_te[i])
         
             signal=torch.from_numpy(signal).float().cuda().contiguous()

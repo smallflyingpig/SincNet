@@ -56,7 +56,7 @@ class SincConv_fast(nn.Module):
         return 700 * (10 ** (mel / 2595) - 1)
 
     def __init__(self, out_channels, kernel_size, sample_rate=16000, in_channels=1,
-                 stride=1, padding=0, dilation=1, bias=False, groups=1, min_low_hz=50, min_band_hz=50):
+                 stride=1, padding=0, dilation=1, bias=False, groups=1, min_low_hz=50, min_band_hz=50, filter_type='band_pass'):
 
         super(SincConv_fast,self).__init__()
 
@@ -105,17 +105,37 @@ class SincConv_fast(nn.Module):
         # Hamming window
         #self.window_ = torch.hamming_window(self.kernel_size)
         n_lin=torch.linspace(0, (self.kernel_size/2)-1, steps=int((self.kernel_size/2))) # computing only half of the window
-        self.window_=0.54-0.46*torch.cos(2*math.pi*n_lin/self.kernel_size);
+        self.window_=0.54-0.46*torch.cos(2*math.pi*n_lin/self.kernel_size); #hamming
 
 
         # (kernel_size, 1)
         n = (self.kernel_size - 1) / 2.0
         self.n_ = 2*math.pi*torch.arange(-n, 0).view(1, -1) / self.sample_rate # Due to symmetry, I only need half of the time axes
 
- 
+        self.filter_type = filter_type
+        
 
 
     def forward(self, waveforms):
+        """
+        Parameters
+        ----------
+        waveforms : `torch.Tensor` (batch_size, 1, n_samples)
+            Batch of waveforms.
+        Returns
+        -------
+        features : `torch.Tensor` (batch_size, out_channels, n_samples_out)
+            Batch of sinc filters activations.
+        """
+
+        if self.filter_type == 'band_pass':
+            return self.band_pass(waveforms)
+        elif self.filter_type == 'band_stop':
+            return self.band_stop(waveforms)
+        elif self.filter_type == 'both':
+            return self.band_pass(self.band_stop(waveforms))
+    
+    def band_pass(self, waveforms):
         """
         Parameters
         ----------
@@ -141,7 +161,7 @@ class SincConv_fast(nn.Module):
 
         band_pass_left=((torch.sin(f_times_t_high)-torch.sin(f_times_t_low))/(self.n_/2))*self.window_ # Equivalent of Eq.4 of the reference paper (SPEAKER RECOGNITION FROM RAW WAVEFORM WITH SINCNET). I just have expanded the sinc and simplified the terms. This way I avoid several useless computations. 
         band_pass_center = 2*band.view(-1,1)
-        band_pass_right= torch.flip(band_pass_left,dims=[1])
+        band_pass_right = torch.flip(band_pass_left,dims=[1])
         
         
         band_pass=torch.cat([band_pass_left,band_pass_center,band_pass_right],dim=1)
@@ -157,6 +177,38 @@ class SincConv_fast(nn.Module):
                         padding=self.padding, dilation=self.dilation,
                          bias=None, groups=1) 
 
+
+    def band_stop(self, waveforms, layer_norm=None):
+        self.n_ = self.n_.to(waveforms.device)
+
+        self.window_ = self.window_.to(waveforms.device)
+
+        low = self.min_low_hz  + torch.abs(self.low_hz_)
+        
+        high = torch.clamp(low + self.min_band_hz + torch.abs(self.band_hz_),self.min_low_hz,self.sample_rate/2)
+        band=(high-low)[:,0]
+        
+        f_times_t_low = torch.matmul(low, self.n_)
+        f_times_t_high = torch.matmul(high, self.n_)
+
+        band_stop_left=((torch.sin(f_times_t_low)-torch.sin(f_times_t_high)+torch.sin(self.n_/2))/(self.n_/2))*self.window_ # Equivalent of Eq.4 of the reference paper (SPEAKER RECOGNITION FROM RAW WAVEFORM WITH SINCNET). I just have expanded the sinc and simplified the terms. This way I avoid several useless computations. 
+        band_stop_center = 2*band.view(-1,1)
+        band_stop_right = torch.flip(band_stop_left,dims=[1])
+        
+        
+        band_stop=torch.cat([band_stop_left,band_stop_center,band_stop_right],dim=1)
+
+        
+        band_stop = band_stop / (2*band[:,None])
+        
+        self.filters = (band_stop).view(
+            self.out_channels, 1, 1, self.kernel_size)
+
+        for idx in range(self.out_channels):
+            waveforms = F.conv1d(waveforms, self.filters[idx], stride=self.stride, 
+                padding=self.kernel_size//2, dilation=self.dilation, bias=None, groups=1)
+            waveforms = layer_norm(waveforms) if layer_norm is not None else waveforms
+        return waveforms
 
         
         
@@ -203,7 +255,7 @@ class sinc_conv(nn.Module):
         # Filter window (hamming)
         window=0.54-0.46*torch.cos(2*math.pi*n/N);
         window=Variable(window.float().cuda())
-
+        
         
         for i in range(self.N_filt):
                         
@@ -363,12 +415,11 @@ class MLP(nn.Module):
 class SincNet(nn.Module):
     
     def __init__(self,options):
-       super(SincNet,self).__init__()
+       super(SincNet,self).__init__(band_stop=False)
     
        self.cnn_N_filt=options['cnn_N_filt']
        self.cnn_len_filt=options['cnn_len_filt']
        self.cnn_max_pool_len=options['cnn_max_pool_len']
-       
        
        self.cnn_act=options['cnn_act']
        self.cnn_drop=options['cnn_drop']
@@ -425,7 +476,7 @@ class SincNet(nn.Module):
 
          
        self.out_dim=current_input*N_filt
-
+       self.band_stop = band_stop
 
 
     def forward(self, x):
@@ -439,12 +490,14 @@ class SincNet(nn.Module):
         x=self.bn0((x))
         
        x=x.view(batch,1,seq_len)
-
+       
        
        for i in range(self.N_cnn_lay):
            
          if self.cnn_use_laynorm[i]:
           if i==0:
+           if self.band_stop:
+               x = self.conv[i].band_stop(x, self.ln0)
            x = self.drop[i](self.act[i](self.ln[i](F.max_pool1d(torch.abs(self.conv[i](x)), self.cnn_max_pool_len[i]))))  
           else:
            x = self.drop[i](self.act[i](self.ln[i](F.max_pool1d(self.conv[i](x), self.cnn_max_pool_len[i]))))   

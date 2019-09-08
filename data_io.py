@@ -17,7 +17,7 @@ def ReadList(list_file):
 def read_conf():
  
  parser=OptionParser()
- parser.add_option("--cfg") # Mandatory
+ parser.add_option("--cfg", type=str, default="./cfg/SincNet_TIMIT.cfg") # Mandatory
  parser.add_option("--eval", action='store_true', default=False, help="eval the model")
  parser.add_option("--pt_file_reset", type=str, default='', help="path for pretrained file")
  parser.add_option("--data_folder_reset", type=str, default='', help="path for data")
