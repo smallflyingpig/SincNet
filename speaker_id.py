@@ -72,7 +72,7 @@ def evaluate(model:SpeakerIDNet, lab_dict, wlen, wshift, Batch_dev, cost):
     err_sum_snt=0
     # model.CNN_net.conv[0].filter_type='both'
     with torch.no_grad():  
-        for i in range(tqdm.tqdm(args.snt_te)):
+        for i in tqdm.tqdm(range(args.snt_te)):
             [signal, fs] = sf.read(args.data_folder+args.wav_lst_te[i])
         
             signal=torch.from_numpy(signal).float().cuda().contiguous()

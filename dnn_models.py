@@ -414,8 +414,8 @@ class MLP(nn.Module):
 
 class SincNet(nn.Module):
     
-    def __init__(self,options):
-       super(SincNet,self).__init__(band_stop=False)
+    def __init__(self,options, band_stop=False):
+       super(SincNet,self).__init__()
     
        self.cnn_N_filt=options['cnn_N_filt']
        self.cnn_len_filt=options['cnn_len_filt']
